@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% block title %}Analyze Flow — CyberShield{% endblock %}
+{% block breadcrumb %}analyze flow{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .result-ring {
+        width: 120px; height: 120px;
+        border-radius: 50%;
+        border: 2px solid var(--line2);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        margin: 0 auto 16px;
+        position: relative;
+    }
+    .result-ring.attack {
+        border-color: var(--red);
+        box-shadow: 0 0 20px rgba(255,59,92,0.2), inset 0 0 20px rgba(255,59,92,0.05);
+    }
+    .result-ring.normal {
+        border-color: var(--green);
+        box-shadow: 0 0 20px rgba(0,230,118,0.2), inset 0 0 20px rgba(0,230,118,0.05);
+    }
+    .result-ring .ring-label { font-size: 0.6rem; letter-spacing: 2px; color: var(--text3); font-family: var(--mono); text-transform: uppercase; }
+    .result-ring .ring-value { font-size: 1.1rem; font-weight: 700; font-family: var(--mono); text-align: center; }
+
+    .prob-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--line);
+    }
+    .prob-item:last-child { border-bottom: none; }
+    .prob-label { font-family: var(--mono); font-size: 0.72rem; color: var(--text2); width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
+    .prob-bar-wrap { flex: 1; }
+    .prob-pct { font-family: var(--mono); font-size: 0.72rem; width: 48px; text-align: right; }
+
+    .quick-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .sample-btn {
+        padding: 5px 12px;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        font-family: var(--mono);
+        cursor: pointer;
+        border: 1px solid var(--line2);
+        background: var(--bg2);
+        color: var(--text2);
+        transition: all 0.15s;
+    }
+    .sample-btn:hover { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+    .sample-btn.active { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+
+    .feature-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .spinner {
+        width: 16px; height: 16px;
+        border: 2px solid rgba(0,0,0,0.2);
+        border-top-color: #000;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-eyebrow">Detection Engine</div>
+    <div class="page-title">Analyze <span class="accent">Network Flow</span></div>
+    <div class="page-desc">Enter feature values or load a demo sample — XGBoost classifies in &lt;50ms with SHAP explanation</div>
+</div>
+
+<div class="row">
+
+    <!-- ── Left: Inputs ── -->
+    <div class="col-5">
+        <div class="card mb-16">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-sliders-h"></i> Flow Features</div>
+            </div>
+
+            <div class="field">
+                <label class="field-label">Detection Model</label>
+                <select class="select" id="modelSelect">
+                    <option value="xgboost">XGBoost — 99.87% accuracy</option>
+                    <option value="random_forest">Random Forest — 99.37% accuracy</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label class="field-label">Demo Samples</label>
+                <div class="quick-btns">
+                    <button class="sample-btn" onclick="fillSample('ddos',this)">DDoS</button>
+                    <button class="sample-btn" onclick="fillSample('portscan',this)">PortScan</button>
+                    <button class="sample-btn" onclick="fillSample('benign',this)">Benign</button>
+                    <button class="sample-btn" onclick="fillSample('bruteforce',this)">Brute Force</button>
+                    <button class="sample-btn" onclick="fillSample('slowloris',this)">Slowloris</button>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="feature-grid">
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Dst Port</label>
+                    <input type="number" class="input" id="feat_Destination Port" value="80">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Flow Duration (µs)</label>
+                    <input type="number" class="input" id="feat_Flow Duration" value="50000">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Flow Bytes/s</label>
+                    <input type="number" class="input" id="feat_Flow Bytes/s" value="1000">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Flow Packets/s</label>
+                    <input type="number" class="input" id="feat_Flow Packets/s" value="10">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Fwd Packets/s</label>
+                    <input type="number" class="input" id="feat_Fwd Packets/s" value="5">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Bwd Packets/s</label>
+                    <input type="number" class="input" id="feat_Bwd Packets/s" value="5">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Pkt Length Mean</label>
+                    <input type="number" class="input" id="feat_Packet Length Mean" value="500">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Fwd IAT Min</label>
+                    <input type="number" class="input" id="feat_Fwd IAT Min" value="100">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Init Win Fwd</label>
+                    <input type="number" class="input" id="feat_Init_Win_bytes_forward" value="65535">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label class="field-label">Init Win Bwd</label>
+                    <input type="number" class="input" id="feat_Init_Win_bytes_backward" value="65535">
+                </div>
+            </div>
+
+            <button class="btn btn-primary w100 mt-16" id="analyzeBtn" onclick="runPrediction()">
+                <i class="fas fa-crosshairs"></i>
+                <span id="btnText">Analyze Traffic</span>
+                <div class="spinner" id="btnSpinner"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Right: Results ── -->
+    <div class="col-7">
+
+        <!-- Placeholder -->
+        <div class="card" id="placeholder" style="min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center">
+            <div style="width:60px;height:60px;border-radius:50%;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+                <i class="fas fa-crosshairs" style="font-size:1.4rem; color:var(--text3)"></i>
+            </div>
+            <div class="text-muted text-sm">Load a demo sample or enter feature values</div>
+            <div class="text-dim text-xs mt-8">Results will appear here</div>
+        </div>
+
+        <!-- Result card (hidden) -->
+        <div class="card mb-16" id="resultCard" style="display:none">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-crosshairs"></i> Classification Result</div>
+                <span id="resultTag"></span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 130px 1fr; gap:20px; align-items:start">
+                <div>
+                    <div class="result-ring" id="resultRing">
+                        <div class="ring-label">verdict</div>
+                        <div class="ring-value" id="ringLabel">—</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div class="text-dim text-xs mb-4">Confidence</div>
+                        <div class="text-mono fw-700" id="confPct" style="font-size:1.2rem; color:var(--cyan)">—</div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="card-title mb-8"><i class="fas fa-list"></i> Class Probabilities</div>
+                    <div id="probList"></div>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Anomaly detection row -->
+            <div class="alert alert-cyan">
+                <div class="flex-between">
+                    <span class="text-sm"><i class="fas fa-robot" style="margin-right:6px; color:var(--cyan)"></i>Autoencoder Anomaly Detection</span>
+                    <span id="anomalyTag"></span>
+                </div>
+                <div class="flex-between mt-8 text-xs text-dim">
+                    <span>Score: <span class="text-mono" id="anomalyScore" style="color:var(--text)">—</span></span>
+                    <span>Threshold: <span class="text-mono" id="anomalyThresh" style="color:var(--text)">—</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SHAP card (hidden) -->
+        <div class="card" id="shapCard" style="display:none">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-brain"></i> SHAP Explainability</div>
+                <span class="text-xs text-dim">Why did the model decide this?</span>
+            </div>
+            <div id="shapBars"></div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const samples = {
+    ddos: { 'Destination Port':80, 'Flow Duration':119000, 'Flow Bytes/s':358987, 'Flow Packets/s':2840, 'Fwd Packets/s':1420, 'Bwd Packets/s':1420, 'Packet Length Mean':126, 'Init_Win_bytes_forward':0, 'Init_Win_bytes_backward':0, 'Fwd IAT Min':0 },
+    portscan: { 'Destination Port':443, 'Flow Duration':0, 'Flow Bytes/s':0, 'Flow Packets/s':2000000, 'Fwd Packets/s':2000000, 'Bwd Packets/s':0, 'Packet Length Mean':0, 'Init_Win_bytes_forward':1024, 'Init_Win_bytes_backward':0, 'Fwd IAT Min':0 },
+    benign: { 'Destination Port':443, 'Flow Duration':3000000, 'Flow Bytes/s':5000, 'Flow Packets/s':10, 'Fwd Packets/s':5, 'Bwd Packets/s':5, 'Packet Length Mean':800, 'Init_Win_bytes_forward':65535, 'Init_Win_bytes_backward':65535, 'Fwd IAT Min':50000 },
+    bruteforce: { 'Destination Port':80, 'Flow Duration':500000, 'Flow Bytes/s':12000, 'Flow Packets/s':15, 'Fwd Packets/s':8, 'Bwd Packets/s':7, 'Packet Length Mean':400, 'Init_Win_bytes_forward':8192, 'Init_Win_bytes_backward':229, 'Fwd IAT Min':1000 },
+    slowloris: { 'Destination Port':80, 'Flow Duration':20000000, 'Flow Bytes/s':200, 'Flow Packets/s':2, 'Fwd Packets/s':1, 'Bwd Packets/s':1, 'Packet Length Mean':200, 'Init_Win_bytes_forward':8192, 'Init_Win_bytes_backward':0, 'Fwd IAT Min':5000000 }
+};
+
+let activeSampleBtn = null;
+
+function fillSample(type, btn) {
+    const s = samples[type];
+    for (const [k, v] of Object.entries(s)) {
+        const el = document.getElementById('feat_' + k);
+        if (el) el.value = v;
+    }
+    document.querySelectorAll('.sample-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+}
+
+async function runPrediction() {
+    const btn = document.getElementById('analyzeBtn');
+    const spinner = document.getElementById('btnSpinner');
+    const txt = document.getElementById('btnText');
+    btn.disabled = true;
+    txt.textContent = 'Analyzing…';
+    spinner.style.display = 'block';
+
+    const features = {};
+    document.querySelectorAll('[id^="feat_"]').forEach(el => {
+        features[el.id.replace('feat_', '')] = parseFloat(el.value) || 0;
+    });
+
+    try {
+        const res = await fetch('/api/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ features, model: document.getElementById('modelSelect').value })
+        });
+        const data = await res.json();
+        if (data.success) displayResults(data);
+        else alert('Error: ' + data.error);
+    } catch(e) { alert('Connection error: ' + e.message); }
+
+    btn.disabled = false;
+    txt.textContent = 'Analyze Traffic';
+    spinner.style.display = 'none';
+}
+
+function displayResults(data) {
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('shapCard').style.display = 'block';
+
+    // Tag
+    document.getElementById('resultTag').innerHTML = data.is_attack
+        ? '<span class="tag tag-red"><i class="fas fa-exclamation-triangle"></i> ATTACK</span>'
+        : '<span class="tag tag-green"><i class="fas fa-check"></i> BENIGN</span>';
+
+    // Ring
+    const ring = document.getElementById('resultRing');
+    ring.className = 'result-ring ' + (data.is_attack ? 'attack' : 'normal');
+    const ringLabel = document.getElementById('ringLabel');
+    const shortLabel = data.prediction.length > 12 ? data.prediction.slice(0,11)+'…' : data.prediction;
+    ringLabel.textContent = shortLabel;
+    ringLabel.style.color = data.is_attack ? 'var(--red)' : 'var(--green)';
+    ringLabel.style.fontSize = data.prediction.length > 8 ? '0.75rem' : '1.1rem';
+
+    document.getElementById('confPct').textContent = data.confidence + '%';
+
+    // Probabilities
+    const top5 = Object.entries(data.all_probabilities).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    document.getElementById('probList').innerHTML = top5.map(([label, pct]) => {
+        const col = label === 'BENIGN' ? 'var(--green)' : pct > 50 ? 'var(--red)' : 'var(--cyan)';
+        return `<div class="prob-item">
+            <span class="prob-label">${label}</span>
+            <div class="prob-bar-wrap">
+                <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
+            </div>
+            <span class="prob-pct" style="color:${col}">${pct}%</span>
+        </div>`;
+    }).join('');
+
+    // Anomaly
+    document.getElementById('anomalyScore').textContent = data.anomaly_score;
+    document.getElementById('anomalyThresh').textContent = data.anomaly_threshold;
+    document.getElementById('anomalyTag').innerHTML = data.is_anomaly
+        ? '<span class="tag tag-amber">⚠ Anomaly</span>'
+        : '<span class="tag tag-green">✓ Normal</span>';
+
+    // SHAP
+    const maxImp = data.top_features[0].importance;
+    document.getElementById('shapBars').innerHTML = data.top_features.map(f => {
+        const pct = (f.importance / maxImp * 100).toFixed(0);
+        return `<div class="mb-8">
+            <div class="flex-between mb-4">
+                <span class="text-xs text-muted text-mono">${f.feature}</span>
+                <span class="text-xs text-cyan text-mono">${f.importance.toFixed(4)}</span>
+            </div>
+            <div class="bar-track">
+                <div class="bar-fill" style="width:${pct}%; background:linear-gradient(90deg,var(--cyan),var(--purple))"></div>
+            </div>
+        </div>`;
+    }).join('');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Overview — CyberShield{% endblock %}
+{% block breadcrumb %}overview{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div class="page-eyebrow">System Overview</div>
+    <div class="page-title">Security <span class="accent">Dashboard</span></div>
+    <div class="page-desc">AI-powered network intrusion detection — CICIDS2017 dataset · 15 attack classes</div>
+</div>
+
+<!-- ── Stat row ── -->
+<div class="stat-grid mb-24">
+    <div class="stat-card cyan">
+        <div class="stat-label">Models Trained</div>
+        <div class="stat-value">6</div>
+        <div class="stat-sub">ML + DL ensemble</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-label">Best Accuracy</div>
+        <div class="stat-value">99.87<span style="font-size:1rem">%</span></div>
+        <div class="stat-sub">XGBoost · F1 0.9987</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-label">Attack Classes</div>
+        <div class="stat-value">15</div>
+        <div class="stat-sub">Including BENIGN</div>
+    </div>
+    <div class="stat-card amber">
+        <div class="stat-label">Training Flows</div>
+        <div class="stat-value">2.8<span style="font-size:1rem">M</span></div>
+        <div class="stat-sub">After SMOTE balancing</div>
+    </div>
+</div>
+
+<!-- ── Main row ── -->
+<div class="row mb-24">
+    <div class="col-7">
+        <div class="card" style="height:100%">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-table"></i> Model Performance</div>
+                <span class="tag tag-cyan">6 models</span>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Accuracy</th>
+                        <th>Precision</th>
+                        <th>F1 Score</th>
+                        <th>Rank</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in model_results %}
+                    <tr>
+                        <td>
+                            <span class="text-mono text-sm">{{ m.name }}</span>
+                            {% if m.name == 'XGBoost' %}
+                            <span class="tag tag-cyan" style="margin-left:8px; font-size:0.6rem">ACTIVE</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="flex-center gap-8">
+                                <div class="bar-track" style="width:60px">
+                                    <div class="bar-fill" style="width:{{ ((m.accuracy - 97) / 3 * 100)|round }}%; background:var(--cyan)"></div>
+                                </div>
+                                <span class="text-mono text-xs text-cyan">{{ m.accuracy }}%</span>
+                            </div>
+                        </td>
+                        <td><span class="text-mono text-xs text-muted">{{ m.precision }}%</span></td>
+                        <td><span class="text-mono text-xs {% if m.name == 'XGBoost' %}text-green{% else %}text-muted{% endif %}">{{ m.f1 }}%</span></td>
+                        <td>
+                            {% if m.name == 'XGBoost' %}
+                                <span class="tag tag-green">#1</span>
+                            {% elif m.name == 'Dense Neural Network' %}
+                                <span class="tag tag-cyan">#2</span>
+                            {% elif m.name == 'Random Forest' %}
+                                <span class="tag tag-cyan">#3</span>
+                            {% else %}
+                                <span class="text-dim text-xs">#{{ loop.index }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-5">
+        <div class="card" style="height:100%">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-chart-bar"></i> F1 Score</div>
+            </div>
+            <canvas id="modelChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- ── Bottom row ── -->
+<div class="row mb-24">
+    <div class="col-6">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-brain"></i> SHAP Feature Importance</div>
+                <span class="text-xs text-dim">XGBoost · top 10</span>
+            </div>
+            {% for f in top_features %}
+            <div class="mb-8">
+                <div class="flex-between mb-4">
+                    <span class="text-xs text-muted text-mono">{{ f.feature }}</span>
+                    <span class="text-xs text-cyan text-mono">{{ "%.4f"|format(f.importance) }}</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width:{{ (f.importance / top_features[0].importance * 100)|round }}%; background: linear-gradient(90deg, var(--cyan), var(--purple))"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-6">
+        <div class="card mb-16">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-virus"></i> Detectable Threats</div>
+                <span class="text-xs text-dim">{{ attack_classes|length }} classes</span>
+            </div>
+            <div class="flex" style="flex-wrap:wrap; gap:6px">
+                {% for attack in attack_classes %}
+                <span class="tag {% if attack == 'BENIGN' %}tag-green{% else %}tag-red{% endif %}">
+                    {{ attack }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Quick launch -->
+        <div class="card" style="border-color: rgba(0,229,255,0.2); background: linear-gradient(135deg, var(--bg1), rgba(0,229,255,0.03))">
+            <div class="card-title mb-12"><i class="fas fa-rocket"></i> Quick Launch</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+                <a href="/predict" class="btn btn-primary" style="justify-content:center">
+                    <i class="fas fa-crosshairs"></i> Analyze Flow
+                </a>
+                <a href="/simulate" class="btn btn-danger" style="justify-content:center">
+                    <i class="fas fa-terminal"></i> Attack Console
+                </a>
+            </div>
+            <div class="mt-12 text-xs text-dim" style="line-height:1.6">
+                Analyze a single network flow for instant classification, or launch the Attack Console to simulate and replay real CICIDS2017 attack traffic.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const ctx = document.getElementById('modelChart').getContext('2d');
+const md  = {{ model_results | tojson }};
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: md.map(m => m.name.replace(' Neural Network','').replace('Logistic ','LR ')),
+        datasets: [{
+            label: 'F1 %',
+            data: md.map(m => m.f1),
+            backgroundColor: md.map(m => m.name === 'XGBoost'
+                ? 'rgba(0,229,255,0.7)'
+                : 'rgba(0,229,255,0.2)'),
+            borderColor: md.map(m => m.name === 'XGBoost'
+                ? 'rgba(0,229,255,1)'
+                : 'rgba(0,229,255,0.35)'),
+            borderWidth: 1,
+            borderRadius: 4,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: {
+                min: 96, max: 100.2,
+                ticks: { color: '#3d506e', font: { family: 'Space Mono', size: 10 } },
+                grid: { color: '#1a2540' }
+            },
+            x: {
+                ticks: { color: '#3d506e', font: { size: 10 }, maxRotation: 40 },
+                grid: { display: false }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

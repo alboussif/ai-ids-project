@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+{% block title %}Model Comparison — CyberShield{% endblock %}
+{% block breadcrumb %}model comparison{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* ── Mode toggle ── */
+    .mode-toggle {
+        display: flex;
+        background: var(--bg2);
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        padding: 3px;
+        gap: 3px;
+    }
+    .mode-btn {
+        flex: 1;
+        padding: 7px 14px;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: transparent;
+        color: var(--text2);
+        font-family: var(--sans);
+        transition: all 0.15s;
+        text-align: center;
+    }
+    .mode-btn.active {
+        background: var(--bg3);
+        color: var(--cyan);
+        border: 1px solid var(--line2);
+    }
+
+    /* ── Loading overlay ── */
+    .loading-overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: rgba(6,10,16,0.85);
+        border-radius: 8px;
+        z-index: 50;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+    }
+    .loading-overlay.show { display: flex; }
+
+    .loader-ring {
+        width: 44px; height: 44px;
+        border: 2px solid var(--line2);
+        border-top-color: var(--cyan);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-text {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text2);
+    }
+    .loader-subtext {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--text3);
+        text-align: center;
+        line-height: 1.6;
+    }
+
+    /* ── Result cards ── */
+    .result-section { display: none; }
+    .result-section.show { display: block; }
+
+    .model-card {
+        background: var(--bg2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        position: relative;
+        transition: border-color 0.15s;
+    }
+    .model-card.winner {
+        border-color: var(--cyan);
+        background: linear-gradient(135deg, var(--bg2), rgba(0,229,255,0.04));
+    }
+    .model-card.winner::before {
+        content: '★ BEST';
+        position: absolute;
+        top: -1px; right: 12px;
+        background: var(--cyan);
+        color: #000;
+        font-size: 0.58rem;
+        font-weight: 700;
+        font-family: var(--mono);
+        padding: 2px 7px;
+        border-radius: 0 0 4px 4px;
+        letter-spacing: 1px;
+    }
+
+    .model-name {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 12px;
+        font-family: var(--mono);
+    }
+
+    .model-acc {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: var(--mono);
+        line-height: 1;
+        margin-bottom: 2px;
+    }
+
+    .model-card.winner  .model-acc { color: var(--cyan); }
+    .model-card:not(.winner) .model-acc { color: var(--text); }
+
+    .model-meta {
+        font-size: 0.65rem;
+        color: var(--text3);
+        font-family: var(--mono);
+        margin-bottom: 12px;
+    }
+
+    .model-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+
+    .model-stat {
+        background: var(--bg1);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 6px 8px;
+    }
+    .model-stat .s-val {
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .model-stat .s-lbl {
+        font-size: 0.6rem;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-family: var(--mono);
+    }
+
+    /* ── Accuracy bar on model card ── */
+    .acc-track {
+        height: 3px;
+        background: var(--line2);
+        border-radius: 2px;
+        margin-top: 8px;
+    }
+    .acc-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.8s ease;
+    }
+
+    /* ── Class breakdown table ── */
+    .breakdown-toggle {
+        font-size: 0.68rem;
+        color: var(--text3);
+        font-family: var(--mono);
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 8px;
+        transition: color 0.15s;
+    }
+    .breakdown-toggle:hover { color: var(--cyan); }
+
+    .breakdown-table {
+        display: none;
+        margin-top: 8px;
+        background: var(--bg1);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .breakdown-table.show { display: block; }
+    .breakdown-table table { width: 100%; border-collapse: collapse; }
+    .breakdown-table th {
+        font-size: 0.58rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text3);
+        font-family: var(--mono);
+        padding: 5px 8px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+    }
+    .breakdown-table td {
+        font-size: 0.7rem;
+        font-family: var(--mono);
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--line);
+        color: var(--text2);
+    }
+    .breakdown-table tr:last-child td { border-bottom: none; }
+
+    /* ── Chart card ── */
+    .chart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    /* ── Class distribution pills ── */
+    .dist-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        background: var(--bg2);
+        border: 1px solid var(--line2);
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--text2);
+        margin: 3px;
+    }
+    .dist-pill .cnt { color: var(--cyan); font-weight: 700; }
+
+    /* ── Placeholder ── */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+    .empty-icon {
+        width: 56px; height: 56px;
+        border-radius: 50%;
+        border: 1px solid var(--line2);
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 16px;
+        color: var(--text3);
+        font-size: 1.4rem;
+    }
+
+    /* ── Models grid ── */
+    .models-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-bottom: 24px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-eyebrow">Benchmarking</div>
+    <div class="page-title">Model <span class="accent">Comparison</span></div>
+    <div class="page-desc">Run all 6 models on the same traffic sample — compare accuracy, confidence, and per-class performance</div>
+</div>
+
+<div class="row">
+
+    <!-- ── Left: Controls ── -->
+    <div class="col-4">
+        <div class="card" style="position:relative">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-cogs"></i> Test Parameters</div>
+            </div>
+
+            <!-- Mode toggle -->
+            <div class="field">
+                <label class="field-label">Traffic Mode</label>
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="modeSingle" onclick="setMode('single')">
+                        Single Attack
+                    </button>
+                    <button class="mode-btn" id="modeMixed" onclick="setMode('mixed')">
+                        Mixed Traffic
+                    </button>
+                </div>
+            </div>
+
+            <!-- Attack type selector (hidden in mixed mode) -->
+            <div class="field" id="attackField">
+                <label class="field-label">Attack Type</label>
+                <select class="select" id="attackType">
+                    {% for attack in attack_classes %}
+                    <option value="{{ attack }}">{{ attack }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Mixed mode info -->
+            <div id="mixedInfo" style="display:none" class="mb-12">
+                <div class="alert alert-cyan" style="font-size:0.76rem; line-height:1.7">
+                    <strong style="color:var(--cyan)">Mixed mode</strong> samples from all 15 classes proportionally — simulating real network traffic with a variety of attack types and benign flows.
+                </div>
+            </div>
+
+            <!-- Sample count -->
+            <div class="field">
+                <label class="field-label">
+                    Sample Size: <span class="text-cyan" id="sampleLabel">30</span> flows
+                </label>
+                <input type="range" id="nSamples" min="10" max="100" value="30"
+                       oninput="document.getElementById('sampleLabel').textContent=this.value">
+                <div class="flex-between mt-8">
+                    <span class="text-xs text-dim">10 (fast)</span>
+                    <span class="text-xs text-dim">100 (thorough)</span>
+                </div>
+            </div>
+
+            <button class="btn btn-primary w100 mt-8" id="runBtn" onclick="runComparison()">
+                <i class="fas fa-play"></i>
+                <span id="runBtnText">Run Comparison</span>
+            </button>
+
+            <!-- Info note -->
+            <div class="mt-12 text-xs text-dim" style="line-height:1.6">
+                All 6 models process the exact same flows. Keras models (Dense, CNN) take a few extra seconds — results appear together once all are done.
+            </div>
+        </div>
+
+        <!-- Sample distribution (shown after run) -->
+        <div class="card mt-16" id="distCard" style="display:none">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-layer-group"></i> Sample Distribution</div>
+                <span class="text-xs text-dim" id="distTotal"></span>
+            </div>
+            <div id="distPills"></div>
+        </div>
+    </div>
+
+    <!-- ── Right: Results ── -->
+    <div class="col-8" style="position:relative">
+
+        <!-- Loading overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loader-ring"></div>
+            <div class="loader-text" id="loadingText">Running all 6 models…</div>
+            <div class="loader-subtext">
+                KNN · LR · Random Forest · XGBoost<br>Dense NN · 1D-CNN
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="emptyState">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fas fa-chart-bar"></i></div>
+                    <div class="text-muted text-sm">Configure parameters and run a comparison</div>
+                    <div class="text-dim text-xs mt-8">All 6 models will be tested on the same sample</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results (hidden until run) -->
+        <div class="result-section" id="resultSection">
+
+            <!-- Charts -->
+            <div class="chart-grid mb-0">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><i class="fas fa-chart-bar"></i> Accuracy on Sample</div>
+                    </div>
+                    <canvas id="accChart" height="180"></canvas>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><i class="fas fa-bullseye"></i> Avg Confidence</div>
+                    </div>
+                    <canvas id="confChart" height="180"></canvas>
+                </div>
+            </div>
+
+            <!-- Spacer -->
+            <div style="height:16px"></div>
+
+            <!-- Model cards grid -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-trophy"></i> Model Breakdown</div>
+                    <span class="text-xs text-dim" id="resultSubtitle"></span>
+                </div>
+                <div class="models-grid" id="modelsGrid"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let mode = 'single';
+let accChart, confChart;
+
+// ── Mode toggle ───────────────────────────────────────────────
+function setMode(m) {
+    mode = m;
+    document.getElementById('modeSingle').classList.toggle('active', m === 'single');
+    document.getElementById('modeMixed').classList.toggle('active', m === 'mixed');
+    document.getElementById('attackField').style.display = m === 'single' ? 'block' : 'none';
+    document.getElementById('mixedInfo').style.display   = m === 'mixed'  ? 'block' : 'none';
+}
+
+// ── Run comparison ────────────────────────────────────────────
+async function runComparison() {
+    const attackType = mode === 'mixed'
+        ? 'MIXED'
+        : document.getElementById('attackType').value;
+    const nSamples = parseInt(document.getElementById('nSamples').value);
+
+    // Show loading
+    document.getElementById('loadingOverlay').classList.add('show');
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('resultSection').classList.remove('show');
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('runBtnText').textContent = 'Running…';
+
+    // Animate loading text
+    const msgs = [
+        'Running KNN & Logistic Regression…',
+        'Running Random Forest & XGBoost…',
+        'Running Dense Neural Network…',
+        'Running 1D-CNN…',
+        'Aggregating results…',
+    ];
+    let mi = 0;
+    const msgInterval = setInterval(() => {
+        document.getElementById('loadingText').textContent = msgs[mi % msgs.length];
+        mi++;
+    }, 1200);
+
+    try {
+        const res  = await fetch('/api/compare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attack_type: attackType, n_samples: nSamples })
+        });
+        const data = await res.json();
+
+        clearInterval(msgInterval);
+
+        if (!data.success) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        renderResults(data);
+
+    } catch(e) {
+        clearInterval(msgInterval);
+        alert('Connection error: ' + e.message);
+    } finally {
+        document.getElementById('loadingOverlay').classList.remove('show');
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('runBtnText').textContent = 'Run Comparison';
+    }
+}
+
+// ── Render results ────────────────────────────────────────────
+function renderResults(data) {
+    document.getElementById('resultSection').classList.add('show');
+
+    const models  = data.models; // already sorted by accuracy desc
+    const winner  = models[0];
+    const subtitle = `${data.n_samples} flows · ${data.attack_type}`;
+    document.getElementById('resultSubtitle').textContent = subtitle;
+
+    // ── Charts ──────────────────────────────────────────────
+    const labels   = models.map(m => m.name.replace(' Neural Network', ' NN').replace('Logistic Regression', 'LR'));
+    const accData  = models.map(m => m.accuracy);
+    const confData = models.map(m => m.avg_confidence);
+    const colors   = models.map(m =>
+        m.key === winner.key ? 'rgba(0,229,255,0.75)' : 'rgba(0,229,255,0.2)'
+    );
+    const borders  = models.map(m =>
+        m.key === winner.key ? 'rgba(0,229,255,1)' : 'rgba(0,229,255,0.35)'
+    );
+
+    const chartOpts = (label, min) => ({
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: {
+                min,
+                ticks: { color: '#3d506e', font: { family: 'Space Mono', size: 9 } },
+                grid: { color: '#1a2540' }
+            },
+            x: {
+                ticks: { color: '#3d506e', font: { size: 9 }, maxRotation: 30 },
+                grid: { display: false }
+            }
+        }
+    });
+
+    if (accChart)  accChart.destroy();
+    if (confChart) confChart.destroy();
+
+    accChart = new Chart(
+        document.getElementById('accChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Accuracy %',
+                data: accData,
+                backgroundColor: colors,
+                borderColor: borders,
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
+        },
+        options: chartOpts('Accuracy %', Math.max(0, Math.min(...accData) - 5))
+    });
+
+    confChart = new Chart(
+        document.getElementById('confChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Avg Confidence %',
+                data: confData,
+                backgroundColor: models.map(m =>
+                    m.key === winner.key ? 'rgba(124,77,255,0.7)' : 'rgba(124,77,255,0.2)'
+                ),
+                borderColor: models.map(m =>
+                    m.key === winner.key ? 'rgba(124,77,255,1)' : 'rgba(124,77,255,0.35)'
+                ),
+                borderWidth: 1,
+                borderRadius: 4,
+            }]
+        },
+        options: chartOpts('Avg Confidence %', Math.max(0, Math.min(...confData) - 5))
+    });
+
+    // ── Model cards ──────────────────────────────────────────
+    const grid = document.getElementById('modelsGrid');
+    grid.innerHTML = models.map((m, i) => {
+        const isWinner = i === 0;
+        const accPct   = ((m.accuracy - Math.min(...accData)) /
+                         (Math.max(...accData) - Math.min(...accData) + 0.01) * 100).toFixed(0);
+        const fillColor = isWinner ? 'var(--cyan)' : 'var(--line2)';
+        const delta = m.accuracy - m.baseline_f1;
+        const deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(2) + '%';
+        const deltaColor = delta >= 0 ? 'var(--green)' : 'var(--red)';
+
+        const breakdownRows = m.class_breakdown.map(cb =>
+            `<tr>
+                <td>${cb.label}</td>
+                <td>${cb.correct}/${cb.total}</td>
+                <td style="color:${cb.accuracy === 100 ? 'var(--green)' : cb.accuracy < 80 ? 'var(--red)' : 'var(--amber)'}">${cb.accuracy}%</td>
+            </tr>`
+        ).join('');
+
+        const uid = 'bd_' + m.key;
+
+        return `
+        <div class="model-card ${isWinner ? 'winner' : ''}">
+            <div class="model-name">${m.name}</div>
+            <div class="model-acc">${m.accuracy}%</div>
+            <div class="model-meta">
+                ${m.correct}/${m.total} correct &nbsp;·&nbsp;
+                <span style="color:${deltaColor}">${deltaStr} vs baseline</span>
+            </div>
+            <div class="model-stats">
+                <div class="model-stat">
+                    <div class="s-val">${m.avg_confidence}%</div>
+                    <div class="s-lbl">Avg Conf</div>
+                </div>
+                <div class="model-stat">
+                    <div class="s-val">${m.attacks_found}</div>
+                    <div class="s-lbl">Threats</div>
+                </div>
+            </div>
+            <div class="acc-track">
+                <div class="acc-fill" style="width:${m.accuracy}%; background:${fillColor}"></div>
+            </div>
+            ${m.class_breakdown.length > 1 ? `
+            <button class="breakdown-toggle" onclick="toggleBreakdown('${uid}', this)">
+                <i class="fas fa-chevron-right" style="font-size:0.6rem"></i> Per-class breakdown
+            </button>
+            <div class="breakdown-table" id="${uid}">
+                <table>
+                    <thead><tr><th>Class</th><th>Correct</th><th>Acc</th></tr></thead>
+                    <tbody>${breakdownRows}</tbody>
+                </table>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+
+    // ── Distribution pills ───────────────────────────────────
+    document.getElementById('distCard').style.display = 'block';
+    document.getElementById('distTotal').textContent = data.n_samples + ' flows';
+    document.getElementById('distPills').innerHTML = data.class_dist.map(d =>
+        `<span class="dist-pill">
+            <span style="color:${d.label==='BENIGN'?'var(--green)':'var(--red)'}">${d.label}</span>
+            <span class="cnt">${d.count}</span>
+        </span>`
+    ).join('');
+}
+
+function toggleBreakdown(uid, btn) {
+    const el = document.getElementById(uid);
+    el.classList.toggle('show');
+    const icon = btn.querySelector('i');
+    icon.style.transform = el.classList.contains('show') ? 'rotate(90deg)' : '';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,601 @@
+{% extends "base.html" %}
+{% block title %}Attack Console — CyberShield{% endblock %}
+{% block breadcrumb %}attack console{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* ── Tabs ── */
+    .console-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 20px;
+    }
+    .tab-btn {
+        padding: 10px 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        font-family: var(--sans);
+        color: var(--text2);
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        transition: all 0.15s;
+        margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+    .tab-btn i { font-size: 0.75rem; }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: flex; flex-direction: column; }
+
+    /* ── Terminal log ── */
+    .terminal {
+        background: #03080e;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        height: 320px;
+        overflow-y: auto;
+        padding: 12px 14px;
+        line-height: 1.7;
+    }
+    .terminal::-webkit-scrollbar { width: 3px; }
+    .terminal .line-ts { color: var(--text3); margin-right: 8px; }
+    .terminal .line-attack { color: var(--red); }
+    .terminal .line-normal { color: var(--green); }
+    .terminal .line-info   { color: var(--cyan); }
+    .terminal .line-dim    { color: var(--text3); }
+    .terminal .line-warn   { color: var(--amber); }
+
+    /* ── Flow table ── */
+    .flow-table-wrap {
+        height: 320px;
+        overflow-y: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+    }
+    .flow-table-wrap table { width:100%; border-collapse:collapse; }
+    .flow-table-wrap thead th {
+        position: sticky; top: 0;
+        background: var(--bg1);
+        text-align:left;
+        padding: 8px 12px;
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--text3);
+        font-family: var(--mono);
+        border-bottom: 1px solid var(--line);
+        z-index: 10;
+    }
+    .flow-table-wrap td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.75rem;
+        color: var(--text);
+        vertical-align: middle;
+    }
+    .flow-table-wrap tr:last-child td { border-bottom: none; }
+    .flow-table-wrap tbody tr { animation: rowIn 0.25s ease; }
+    @keyframes rowIn {
+        from { opacity:0; transform: translateY(-6px); }
+        to   { opacity:1; transform: translateY(0); }
+    }
+
+    /* ── Confidence mini bar ── */
+    .mini-bar { display:flex; align-items:center; gap:6px; }
+    .mini-bar-track { width:50px; height:3px; background:var(--line2); border-radius:2px; }
+    .mini-bar-fill  { height:100%; border-radius:2px; background:var(--cyan); }
+
+    /* ── Pulse indicator ── */
+    .pulse-dot {
+        width: 7px; height: 7px; border-radius:50%;
+        background: var(--red);
+        box-shadow: 0 0 6px var(--red);
+        animation: blink 1s ease infinite;
+        display: inline-block;
+    }
+
+    /* ── Big metric ── */
+    .big-metric { text-align: center; padding: 12px 0; }
+    .big-metric .val { font-family: var(--mono); font-size: 2.2rem; font-weight: 700; line-height:1; }
+    .big-metric .lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing:1.5px; color:var(--text3); margin-top:4px; font-family: var(--mono); }
+
+    /* ── Live drop zone ── */
+    .drop-zone {
+        border: 1px dashed var(--line2);
+        border-radius: 6px;
+        padding: 32px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .drop-zone:hover {
+        border-color: var(--cyan);
+        background: var(--cyan-dim);
+    }
+    .drop-zone i { font-size: 1.6rem; color: var(--text3); margin-bottom: 10px; display: block; }
+    .drop-zone p { color: var(--text2); font-size: 0.82rem; margin: 0; }
+    .drop-zone small { color: var(--text3); font-size: 0.7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-eyebrow">Red Team / Blue Team</div>
+    <div class="page-title">Attack <span class="accent">Console</span></div>
+    <div class="page-desc">Simulate CICIDS2017 attack traffic or monitor live PCAP flows in real time</div>
+</div>
+
+<div class="console-tabs">
+    <button class="tab-btn active" onclick="switchTab('simulate', this)">
+        <i class="fas fa-play-circle"></i> Simulation Mode
+    </button>
+    <button class="tab-btn" onclick="switchTab('live', this)">
+        <i class="fas fa-satellite-dish"></i> Live Detection
+        <span id="liveCountBadge" style="display:none; background:var(--red); color:#fff; font-size:0.6rem; padding:1px 5px; border-radius:8px; font-family:var(--mono)">0</span>
+    </button>
+</div>
+
+<!-- ═══════════ SIMULATE TAB ═══════════ -->
+<div id="tab-simulate" class="tab-pane active">
+    <div class="row">
+
+        <!-- Controls -->
+        <div class="col-4">
+            <div class="card mb-16">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-cogs"></i> Parameters</div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label">Attack Type</label>
+                    <select class="select" id="attackType">
+                        {% for attack in attack_classes %}
+                        <option value="{{ attack }}">{{ attack }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label class="field-label">Flows: <span id="flowCountLabel" class="text-cyan">20</span></label>
+                    <input type="range" id="nSamples" min="5" max="50" value="20"
+                           oninput="document.getElementById('flowCountLabel').textContent=this.value">
+                </div>
+
+                <div class="field">
+                    <label class="field-label">Replay Speed</label>
+                    <select class="select" id="replaySpeed">
+                        <option value="200">Instant (0.2s)</option>
+                        <option value="500">Fast (0.5s)</option>
+                        <option value="1000" selected>Normal (1s)</option>
+                        <option value="2000">Slow (2s)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-danger w100 mb-8" id="startBtn" onclick="startSimulation()">
+                    <i class="fas fa-play"></i> Launch Simulation
+                </button>
+                <button class="btn btn-ghost w100" onclick="resetSimulation()">
+                    <i class="fas fa-redo"></i> Reset
+                </button>
+            </div>
+
+            <!-- Live counters -->
+            <div class="card mb-16">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-signal"></i> Live Counters</div>
+                    <span id="runningDot" style="display:none"><span class="pulse-dot"></span></span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Flows Processed</span>
+                    <span class="val text-cyan" id="cntProcessed">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Attacks Detected</span>
+                    <span class="val text-red" id="cntDetected">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Normal Traffic</span>
+                    <span class="val text-green" id="cntNormal">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Status</span>
+                    <span class="val text-dim" id="simStatus">IDLE</span>
+                </div>
+            </div>
+
+            <!-- Summary (hidden until done) -->
+            <div class="card" id="summaryCard" style="display:none">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-chart-pie"></i> Summary</div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px">
+                    <div class="big-metric">
+                        <div class="val text-green" id="sumCorrect">0</div>
+                        <div class="lbl">Correct</div>
+                    </div>
+                    <div class="big-metric">
+                        <div class="val text-red" id="sumMissed">0</div>
+                        <div class="lbl">Missed</div>
+                    </div>
+                </div>
+                <div style="text-align:center; margin-bottom:12px">
+                    <div class="val text-cyan" id="sumAccuracy" style="font-family:var(--mono); font-size:2rem; font-weight:700">—</div>
+                    <div class="lbl text-dim" style="font-size:0.65rem;letter-spacing:1.5px;font-family:var(--mono)">DETECTION RATE</div>
+                </div>
+                <div class="bar-track" style="height:6px">
+                    <div class="bar-fill" id="summaryBar" style="background:linear-gradient(90deg,var(--cyan),var(--green))"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: chart + table -->
+        <div class="col-8">
+            <div class="card mb-16">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-chart-line"></i> Confidence Timeline</div>
+                    <span class="text-xs text-dim" id="chartSubtitle">Waiting for simulation…</span>
+                </div>
+                <canvas id="liveChart" height="110"></canvas>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-list"></i> Flow Log</div>
+                    <span class="text-xs text-dim" id="flowLogCount">0 flows</span>
+                </div>
+                <div class="flow-table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>True Label</th>
+                                <th>Prediction</th>
+                                <th>Confidence</th>
+                                <th>Anomaly</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flowTableBody">
+                            <tr>
+                                <td colspan="6" style="text-align:center; color:var(--text3); padding:32px 0; font-family:var(--mono); font-size:0.72rem">
+                                    Launch a simulation to populate the flow log
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ LIVE TAB ═══════════ -->
+<div id="tab-live" class="tab-pane">
+    <div class="row">
+        <div class="col-4">
+            <div class="card mb-16">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-satellite-dish"></i> Live Pipeline</div>
+                    <span class="tag tag-cyan" style="font-size:0.6rem">PCAP</span>
+                </div>
+                <div class="alert alert-cyan mb-16" style="font-size:0.78rem; line-height:1.7">
+                    <strong style="color:var(--cyan)">How it works:</strong><br>
+                    1. Drop a <code>.pcap</code> file into <code>captures/</code><br>
+                    2. <code>pcap_processor.py</code> extracts 66 features<br>
+                    3. XGBoost classifies each flow<br>
+                    4. Results appear here in real time
+                </div>
+                <div class="field">
+                    <label class="field-label">Start Processor</label>
+                    <div class="card" style="background:var(--bg2); padding:12px">
+                        <code style="font-size:0.7rem; color:var(--cyan)">python src/pcap_processor.py</code>
+                    </div>
+                </div>
+                <button class="btn btn-primary w100" onclick="fetchLiveResults()">
+                    <i class="fas fa-sync"></i> Refresh Results
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-signal"></i> Live Stats</div>
+                </div>
+                <div class="info-row">
+                    <span class="key">Total Flows</span>
+                    <span class="val text-cyan" id="lvTotal">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Attacks Found</span>
+                    <span class="val text-red" id="lvAttacks">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Normal Flows</span>
+                    <span class="val text-green" id="lvNormal">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="key">Attack Rate</span>
+                    <span class="val text-amber" id="lvRate">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-8">
+            <!-- Terminal log -->
+            <div class="card mb-16">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-terminal"></i> Detection Log</div>
+                    <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+                </div>
+                <div class="terminal" id="liveTerminal">
+                    <div class="line-info">// CyberShield Live Detection Terminal</div>
+                    <div class="line-dim">// Drop PCAP files into captures/ or click Refresh Results</div>
+                    <div class="line-dim">// ─────────────────────────────────────────────────</div>
+                </div>
+            </div>
+
+            <!-- Recent flows -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><i class="fas fa-list"></i> Recent Flows</div>
+                    <span class="text-xs text-dim" id="liveFlowCount">0 flows</span>
+                </div>
+                <div class="flow-table-wrap" style="height:240px">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Prediction</th>
+                                <th>Confidence</th>
+                                <th>Anomaly</th>
+                                <th>Verdict</th>
+                            </tr>
+                        </thead>
+                        <tbody id="liveTableBody">
+                            <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px 0;font-family:var(--mono);font-size:0.72rem">No flows received yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ─── Chart setup ───────────────────────────────────────────────
+const chartCtx = document.getElementById('liveChart').getContext('2d');
+const liveChart = new Chart(chartCtx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'Confidence %',
+                data: [],
+                borderColor: 'rgba(0,229,255,0.8)',
+                backgroundColor: 'rgba(0,229,255,0.06)',
+                fill: true, tension: 0.4, pointRadius: 3,
+                pointBackgroundColor: []
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        animation: { duration: 200 },
+        plugins: { legend: { labels: { color: '#3d506e', font: { family: 'Space Mono', size: 10 } } } },
+        scales: {
+            y: { min:0, max:100, ticks: { color:'#3d506e', font:{family:'Space Mono',size:9} }, grid: { color:'#1a2540' } },
+            x: { ticks: { color:'#3d506e', font:{size:9} }, grid: { display:false } }
+        }
+    }
+});
+
+// ─── State ────────────────────────────────────────────────────
+let simRunning = false, processed = 0, detected = 0, simNormal = 0, flowLogCount = 0;
+
+// ─── Tabs ─────────────────────────────────────────────────────
+function switchTab(id, btn) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+    if (id === 'live') fetchLiveResults();
+}
+
+// ─── Simulation ───────────────────────────────────────────────
+async function startSimulation() {
+    if (simRunning) return;
+    resetSimulation();
+    simRunning = true;
+
+    const attackType = document.getElementById('attackType').value;
+    const nSamples   = parseInt(document.getElementById('nSamples').value);
+    const speed      = parseInt(document.getElementById('replaySpeed').value);
+
+    setStatus('RUNNING', 'red');
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('runningDot').style.display = 'block';
+    document.getElementById('flowTableBody').innerHTML = '';
+    document.getElementById('chartSubtitle').textContent = `Simulating ${attackType} · ${nSamples} flows`;
+
+    try {
+        const res  = await fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attack_type: attackType, n_samples: nSamples })
+        });
+        const data = await res.json();
+        if (!data.success) { alert('Error: ' + data.error); resetSimulation(); return; }
+
+        document.getElementById('summaryCard').style.display = 'block';
+
+        for (const r of data.results) {
+            await sleep(speed);
+            appendFlowRow(r);
+            processed++;
+            if (r.is_attack) detected++; else simNormal++;
+            flowLogCount++;
+
+            document.getElementById('cntProcessed').textContent  = processed;
+            document.getElementById('cntDetected').textContent   = detected;
+            document.getElementById('cntNormal').textContent     = simNormal;
+            document.getElementById('flowLogCount').textContent  = flowLogCount + ' flows';
+
+            liveChart.data.labels.push(`#${r.index}`);
+            liveChart.data.datasets[0].data.push(r.confidence);
+            liveChart.data.datasets[0].pointBackgroundColor.push(
+                r.is_attack ? 'rgba(255,59,92,0.9)' : 'rgba(0,230,118,0.9)'
+            );
+            liveChart.update();
+        }
+
+        // Final summary
+        const s = data.summary;
+        document.getElementById('sumCorrect').textContent = s.correct;
+        document.getElementById('sumMissed').textContent  = s.total - s.correct;
+        document.getElementById('sumAccuracy').textContent = s.accuracy + '%';
+        document.getElementById('summaryBar').style.width = s.accuracy + '%';
+        setStatus('COMPLETE', 'green');
+
+    } catch(e) { alert('Error: ' + e.message); }
+
+    simRunning = false;
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('runningDot').style.display = 'none';
+}
+
+function appendFlowRow(r) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td class="text-mono text-dim">${r.index}</td>
+        <td><span class="tag ${r.true_label==='BENIGN'?'tag-green':'tag-red'}" style="font-size:0.65rem">${r.true_label}</span></td>
+        <td><span class="tag ${r.predicted_label==='BENIGN'?'tag-green':'tag-red'}" style="font-size:0.65rem">${r.predicted_label}</span></td>
+        <td>
+            <div class="mini-bar">
+                <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${r.confidence}%"></div></div>
+                <span class="text-mono text-xs text-cyan">${r.confidence}%</span>
+            </div>
+        </td>
+        <td class="text-mono text-dim text-xs">${r.anomaly_score}</td>
+        <td>${r.is_correct
+            ? '<span class="tag tag-green" style="font-size:0.65rem">✓ Correct</span>'
+            : '<span class="tag tag-red" style="font-size:0.65rem">✗ Wrong</span>'
+        }</td>`;
+    const body = document.getElementById('flowTableBody');
+    body.insertBefore(row, body.firstChild);
+}
+
+function setStatus(text, color) {
+    const el = document.getElementById('simStatus');
+    el.textContent = text;
+    el.style.color = `var(--${color})`;
+}
+
+function resetSimulation() {
+    processed = 0; detected = 0; simNormal = 0; flowLogCount = 0;
+    document.getElementById('cntProcessed').textContent = 0;
+    document.getElementById('cntDetected').textContent  = 0;
+    document.getElementById('cntNormal').textContent    = 0;
+    document.getElementById('flowLogCount').textContent = '0 flows';
+    document.getElementById('summaryCard').style.display = 'none';
+    document.getElementById('flowTableBody').innerHTML =
+        `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:32px 0;font-family:var(--mono);font-size:0.72rem">Launch a simulation to populate the flow log</td></tr>`;
+    document.getElementById('chartSubtitle').textContent = 'Waiting for simulation…';
+    setStatus('IDLE','text2');
+    liveChart.data.labels = [];
+    liveChart.data.datasets[0].data = [];
+    liveChart.data.datasets[0].pointBackgroundColor = [];
+    liveChart.update();
+}
+
+// ─── Live detection ───────────────────────────────────────────
+function logLine(text, cls) {
+    const term = document.getElementById('liveTerminal');
+    const d = document.createElement('div');
+    const ts = new Date().toTimeString().slice(0,8);
+    d.innerHTML = `<span class="line-ts">[${ts}]</span><span class="${cls}">${text}</span>`;
+    term.appendChild(d);
+    term.scrollTop = term.scrollHeight;
+}
+
+function clearLog() {
+    document.getElementById('liveTerminal').innerHTML =
+        '<div class="line-dim">// Log cleared</div>';
+}
+
+async function fetchLiveResults() {
+    try {
+        const res  = await fetch('/api/live/results');
+        const data = await res.json();
+        if (!data.results) return;
+
+        const results = data.results;
+        const attacks = results.filter(r => r.is_attack).length;
+        const normal  = results.length - attacks;
+
+        document.getElementById('lvTotal').textContent   = results.length;
+        document.getElementById('lvAttacks').textContent = attacks;
+        document.getElementById('lvNormal').textContent  = normal;
+        document.getElementById('lvRate').textContent    = results.length
+            ? (attacks / results.length * 100).toFixed(1) + '%' : '0%';
+        document.getElementById('liveFlowCount').textContent = results.length + ' flows';
+
+        // Badge update
+        if (attacks > 0) {
+            const badge = document.getElementById('liveCountBadge');
+            badge.style.display = 'inline';
+            badge.textContent   = attacks;
+        }
+
+        // Rebuild table
+        const body = document.getElementById('liveTableBody');
+        if (results.length === 0) {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px 0;font-family:var(--mono);font-size:0.72rem">No flows received yet</td></tr>';
+            return;
+        }
+
+        body.innerHTML = [...results].reverse().slice(0,50).map(r => `
+            <tr>
+                <td class="text-mono text-dim text-xs">${r.flow_index}</td>
+                <td><span class="tag ${r.is_attack?'tag-red':'tag-green'}" style="font-size:0.65rem">${r.prediction}</span></td>
+                <td class="text-mono text-xs text-cyan">${r.confidence}%</td>
+                <td class="text-mono text-xs text-dim">${r.anomaly_score}</td>
+                <td>${r.is_attack
+                    ? '<span class="tag tag-red" style="font-size:0.6rem">⚠ THREAT</span>'
+                    : '<span class="tag tag-green" style="font-size:0.6rem">✓ SAFE</span>'
+                }</td>
+            </tr>`).join('');
+
+        // Log new entries
+        results.slice(-5).forEach(r => {
+            if (r.is_attack)
+                logLine(`THREAT DETECTED — ${r.prediction} · conf ${r.confidence}%`, 'line-attack');
+            else
+                logLine(`BENIGN flow · conf ${r.confidence}%`, 'line-normal');
+        });
+
+    } catch(e) {
+        logLine('ERROR — could not reach /api/live/results', 'line-warn');
+    }
+}
+
+// Auto-refresh live tab every 5s
+setInterval(() => {
+    if (document.getElementById('tab-live').classList.contains('active'))
+        fetchLiveResults();
+}, 5000);
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+{% endblock %}
