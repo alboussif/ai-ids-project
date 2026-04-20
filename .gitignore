@@ -1,0 +1,28 @@
+# Virtual environment
+app/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Data files (too large for GitHub)
+data/clean_data.parquet
+data/MachineLearningCVE/
+
+# Trained models (too large for GitHub)
+models/*.pkl
+models/*.keras
+
+# Captures and outputs
+captures/
+reports/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
