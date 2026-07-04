@@ -155,11 +155,6 @@ def api_compare():
         # clean_data.parquet is already scaled — do NOT re-apply scaler
         X_scaled    = sampled.drop('Label', axis=1)[feature_cols].values
 
-        # Debug: print to Flask console to verify labels are correct
-        print(f'[compare] attack={attack_type} n={len(true_labels)}')
-        print(f'[compare] true_labels sample: {true_labels[:5]}')
-        print(f'[compare] X_scaled[0][:5]: {X_scaled[0][:5]}')
-
         # ── Run all 6 models ─────────────────────────────────
         model_results = []
         for meta in MODELS:

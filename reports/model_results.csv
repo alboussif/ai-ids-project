@@ -1,0 +1,5 @@
+name,accuracy,precision,recall,f1
+KNN,0.9853,0.9868,0.9853,0.986
+Logistic Regression,0.9776,0.9805,0.9776,0.9781
+Random Forest,0.9937,0.9978,0.9937,0.9955
+XGBoost,0.9987,0.9988,0.9987,0.9987

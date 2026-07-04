@@ -16,13 +16,11 @@ data/MachineLearningCVE/
 models/*.pkl
 models/*.keras
 
-# Captures and outputs
-captures/
-reports/
-
 # VS Code
 .vscode/
 
 # OS
 .DS_Store
 Thumbs.db
+
+captures/
